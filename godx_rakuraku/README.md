@@ -111,6 +111,22 @@ gmail_inbox_ja.html  ──(リンククリック / click link)──▶  godx_e
 gmail_inbox_en.html  ──(link click)───────────────────▶  godx_emergency_en.html
 ```
 
+### 標的とのつながり / Tie-in to the target
+
+このメールは、OSINTで収集した**越島エナジーのDX推進チーム宛のスピアフィッシング**として作り込んでいます。
+受信アカウント・宛先・宛名は、`koshima_energy/` のPRサイトに掲載された担当者に一致します。
+
+The email is built as a **spear-phish addressed to Koshima Energy's DX Promotion Team**, using an address
+harvested via OSINT. The inbox account, "to" address and salutation match the person listed on the
+`koshima_energy/` PR site:
+
+- 受信者 / Recipient: **田村 直樹 / Naoki Tamura**（DX推進チーム リーダー / DX Promotion Team Lead）
+- アドレス / Address: `n.tamura@koshima-energy.co.jp`（PRサイトの「推進チーム紹介」に掲載 / listed on the PR site）
+
+> これにより「越島エナジーのPRサイト（OSINT）→ 担当者アドレス取得 → 標的型フィッシング着信」という
+> 攻撃の導線を、受講者に一続きで見せられます。Shows learners the full path: OSINT on the PR site →
+> harvested address → targeted phishing landing in that person's inbox.
+
 ### 使い方 / Usage
 
 - ブラウザで `phishing/gmail_inbox_ja.html`（または `_en.html`）を開くだけ。追加ソフト不要。
