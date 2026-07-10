@@ -46,6 +46,10 @@ phishing** and **the user running a command**, not from any flaw in this tool.
 | `app/rakuraku_core.py` | アプリ本体（GUI＋FUXA読み取りクライアント） / app core (GUI + FUXA read client) |
 | `app/rakuraku_share_ja.py` | 「楽々データ共有」日本語版ランチャ / Japanese edition launcher |
 | `app/rakuraku_share_en.py` | "Rakuraku Data Share" 英語版ランチャ / English edition launcher |
+| `phishing/gmail_inbox_ja.html` | Gmail風メール閲覧画面（日本語版） / Gmail-style email view (Japanese) |
+| `phishing/gmail_inbox_en.html` | Gmail風メール閲覧画面（英語版） / Gmail-style email view (English) |
+| `phishing/godx_emergency_ja.html` | 偽パッチ着地ページ（日本語版） / fake-patch landing page (Japanese) |
+| `phishing/godx_emergency_en.html` | 偽パッチ着地ページ（英語版） / fake-patch landing page (English) |
 
 ---
 
@@ -92,7 +96,37 @@ Edit the keywords to fit your controller's tag names.
 
 ---
 
-## 4. 演習での位置づけ（検討メモ）/ Role in the exercise (discussion notes)
+## 4. フィッシング体験画面 / Phishing-experience screens
+
+受講者が「ブラウザのGmailで実際にメールを読んでいる」感覚を得られるよう、Gmail風のメール閲覧画面を
+再現しています。メール内の「修正パッチをダウンロード」リンクをクリックすると、GO DXブランドの
+**偽パッチ着地ページ**（`godx_emergency_*.html`）が別タブで開きます。
+
+A Gmail-style reading view so trainees feel they are reading the mail in a real browser. Clicking the
+"Download patch" link in the message opens the GO DX-branded **fake-patch landing page**
+(`godx_emergency_*.html`) in a new tab.
+
+```
+gmail_inbox_ja.html  ──(リンククリック / click link)──▶  godx_emergency_ja.html
+gmail_inbox_en.html  ──(link click)───────────────────▶  godx_emergency_en.html
+```
+
+### 使い方 / Usage
+
+- ブラウザで `phishing/gmail_inbox_ja.html`（または `_en.html`）を開くだけ。追加ソフト不要。
+  Just open `phishing/gmail_inbox_ja.html` (or `_en.html`) in a browser. No extra software.
+- **4ファイルは同じ `phishing/` フォルダに置いたまま**にしてください（相対リンクで着地ページを開くため）。
+  Keep all four files together in `phishing/` (the landing page opens via a relative link).
+- 着地ページのコマンド内ホスト（既定 `192.168.11.7:8888`）は、`godx_emergency_*.html` を編集して
+  演習環境に合わせてください。Edit the host in the landing page's command to match your range.
+
+> ⚠️ Gmailの見た目を模した**モックアップ**であり、Google／Gmail とは無関係です。本物のフィッシングでは
+> なく、危険を安全に体験させるための教材です。A **mockup** imitating Gmail's look; unaffiliated with
+> Google/Gmail. Not real phishing — training material to experience the lure safely.
+
+---
+
+## 5. 演習での位置づけ（検討メモ）/ Role in the exercise (discussion notes)
 
 - **信頼の悪用 / Abuse of trust:** 攻撃はGO DXという「見慣れたベンダー」への信頼を突く。日常的に本物のツールを
   使っているほど、偽パッチメールに引っかかりやすい。

