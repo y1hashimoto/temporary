@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="120" viewBox="0 0 420 120" role="img" aria-label="越島エナジー KOSHIMA ENERGY">
+  <defs>
+    <linearGradient id="ksWarm" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff9d2f"/>
+      <stop offset="1" stop-color="#e8442b"/>
+    </linearGradient>
+    <linearGradient id="ksCool" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#0aa3d8"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="ksName" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#134e8a"/>
+      <stop offset="1" stop-color="#0f7ea8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Emblem: two interlocking drops = heating loop (warm) + cooling loop (cool),
+       circulating as one district-energy system. -->
+  <g transform="translate(60 60)">
+    <circle r="46" fill="#f2f6fb"/>
+    <!-- warm loop (comma/teardrop) -->
+    <path d="M0,-40 A40,40 0 0,1 0,40 A20,20 0 0,1 0,0 A20,20 0 0,0 0,-40 Z" fill="url(#ksWarm)"/>
+    <!-- cool loop (mirror) -->
+    <path d="M0,40 A40,40 0 0,1 0,-40 A20,20 0 0,1 0,0 A20,20 0 0,0 0,40 Z" fill="url(#ksCool)"/>
+    <circle cx="0" cy="-20" r="7" fill="#fff"/>
+    <circle cx="0" cy="20" r="7" fill="#fff"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="120" y="58" font-family="'Hiragino Kaku Gothic ProN','Yu Gothic',Meiryo,'Segoe UI',sans-serif"
+        font-size="38" font-weight="800" letter-spacing="2" fill="url(#ksName)">越島エナジー</text>
+  <text x="122" y="86" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif"
+        font-size="15" font-weight="700" letter-spacing="4" fill="#5b7089">KOSHIMA ENERGY</text>
+  <text x="122" y="105" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif"
+        font-size="11" font-weight="600" letter-spacing="2" fill="#8aa0b8">地域冷暖房 ・ DISTRICT HEATING &amp; COOLING</text>
+</svg>
