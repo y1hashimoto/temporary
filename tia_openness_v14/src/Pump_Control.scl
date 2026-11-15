@@ -1,0 +1,37 @@
+// S7-1200 向け SCL サンプル (TIA Portal V14 で生成確認する雛形)
+// 生成コマンド: python tia_sync.py scl src\Pump_Control.scl
+FUNCTION_BLOCK "Pump_Control"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Start        : Bool;    // 起動指令 (立ち上がりで起動)
+      Stop         : Bool;    // 停止指令 (優先)
+      Interlock_OK : Bool;    // インターロック成立
+      Level_Low    : Bool;    // 低水位 (空運転防止)
+   END_VAR
+
+   VAR_OUTPUT
+      Run          : Bool;    // ポンプ運転出力
+      Fault        : Bool;    // 異常 (インターロック喪失)
+   END_VAR
+
+   VAR
+      Start_Edge   : Bool;    // 立ち上がり検出用
+      Start_Prev   : Bool;
+   END_VAR
+
+BEGIN
+   // 立ち上がり検出
+   #Start_Edge := #Start AND NOT #Start_Prev;
+   #Start_Prev := #Start;
+
+   // 停止 / インターロック喪失 / 低水位 で停止
+   IF #Stop OR NOT #Interlock_OK OR #Level_Low THEN
+      #Run := FALSE;
+   ELSIF #Start_Edge THEN
+      #Run := TRUE;
+   END_IF;
+
+   // 運転中にインターロックが落ちたら異常
+   #Fault := #Run AND NOT #Interlock_OK;
+END_FUNCTION_BLOCK
