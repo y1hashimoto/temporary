@@ -1,0 +1,9 @@
+{
+  "project": "C:\\work\\MyProject\\MyProject.ap14",
+  "api_dir": "",
+  "plc_device_name": "",
+  "export_dir": "export",
+  "src_dir": "src",
+  "attach_to_running": true,
+  "with_ui": true
+}
