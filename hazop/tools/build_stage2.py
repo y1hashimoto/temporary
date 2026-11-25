@@ -44,6 +44,82 @@ for c in CL_:
 COMMON = re.compile(r"計装空気|電源|受電|冷却水の喪失|冷却水ポンプ停止|冷却水ヘッダ|熱媒供給源|コントローラCPU|制御ネットワーク|地震|外部火災|閉鎖ガス処理系の背圧|他装置からの大量放出|HMI")
 HUMAN = re.compile(r"手順逸脱|閉め忘れ|離席|誤操作|誤閉止|誤開放|判断誤り|再点火|過剰張込み|置換|誤判定|未実施|許可")
 
+# ---------- 絞り込み（スクリーニング）：除外は削除せず 07シートに理由とともに記録 ----------
+SCREEN = []     # dict(kind, r, p, reason, rep)
+for r in RL:
+    s_, e_, b_, *_ = L.severity(r["text"])
+    r["sev0"] = max(x for x in (s_, e_, b_) if x)
+for p in paths:
+    p["H0"] = 1.0
+    for c, _ in p["causes"]:
+        p["H0"] *= c["freq"]
+    p["H0"] *= eval("*".join(str(L.COND[c][1]) for c in p["conds"])) if p["conds"] else 1.0
+byR0 = defaultdict(list)
+for p in paths:
+    byR0[p["result"]["id"]].append(p)
+REP_PAT = [("フラッシュ火災により", "同じ放出源の『噴流火災（設備損傷）』『作業員1名の死亡』『蒸気雲爆発』で代表（着火形態の違いのみで、影響は代表シナリオに包含）"),
+           ("プール火災", "同じ放出源の『噴流火災』『火災曝露による容器破裂（BLEVE相当）』『連鎖損傷』で代表"),
+           ("大量に流出し、フラッシュ蒸発", "同じ放出源の『蒸気雲爆発』『複数死亡』の前段の中間事象（大量放出はADD-C02として条件化済み）")]
+rid_by_text = {r["text"]: r["id"] for r in RL}
+
+
+def rep_ids(t):
+    loc = t.split("から")[0]
+    return "、".join(r["id"] for r in RL if r["text"].startswith(loc) and r["text"] != t and
+                    any(k in r["text"] for k in ("即時着火し、噴流火災", "遅延着火して蒸気雲爆発", "作業員1名が巻き込まれ", "BLEVE")))[:200]
+
+
+for r in RL:
+    if not byR0[r["id"]]:
+        continue
+    if r["sev0"] <= 2:
+        r["screened"] = "低重大度"
+        SCREEN.append(dict(kind="低重大度（S≦2）", r=r, p=None, reason=f"採用重大度{r['sev0']}。人身影響を含まず、第3段の対策検討対象から除外（暫定基準の受容頻度{'1E+0' if r['sev0'] == 1 else '1E-1'}/年）。上位の結果事象（漏洩・火災等）は別に保持", rep="—"))
+        continue
+    for pat, why_ in REP_PAT:
+        if pat in r["text"]:
+            r["screened"] = "代表シナリオに包含"
+            SCREEN.append(dict(kind="代表シナリオに包含", r=r, p=None, reason=why_, rep=rep_ids(r["text"])))
+            break
+kept = [p for p in paths if not p["result"].get("screened")]
+k2 = []
+for p in kept:
+    if all(c["freq"] >= 1.0 for c, _ in p["causes"]):
+        SCREEN.append(dict(kind="潜在条件のみの経路", r=p["result"], p=p, reason="設計上の潜在条件は単独で偏差を発生させない。起動操作等とのAND経路でのみ扱う", rep="同じ偏差群のAND経路"))
+    else:
+        k2.append(p)
+kept = k2
+byK = defaultdict(list)
+for p in kept:
+    byK[p["result"]["id"]].append(p)
+k3 = []
+for p in kept:
+    inter = any(c.get("inter") for c, _ in p["causes"])
+    others = [q for q in byK[p["result"]["id"]] if q is not p and not any(c.get("inter") for c, _ in q["causes"])]
+    if inter and others:
+        SCREEN.append(dict(kind="中間事象型原因の重複", r=p["result"], p=p, reason="原因が上流側の偏差（中間事象）の記述であり、同じ結果事象に至る物理的原因の経路が別に存在するため二重計上を避けて除外", rep=f"{len(others)}本の物理的原因の経路"))
+    else:
+        k3.append(p)
+kept = k3
+best = {}
+for p in kept:
+    key = (p["result"]["id"], tuple(sorted(c["id"] for c, _ in p["causes"])))
+    if key not in best or p["H0"] > best[key]["H0"]:
+        best[key] = p
+k4 = []
+for p in kept:
+    key = (p["result"]["id"], tuple(sorted(c["id"] for c, _ in p["causes"])))
+    if best[key] is p:
+        k4.append(p)
+    else:
+        q = best[key]
+        SCREEN.append(dict(kind="重複経路の統合", r=p["result"], p=p, reason="同一の原因（組合せ）が別の偏差経由で同じ結果事象に至る重複経路。OR和の過大評価を避け、頻度の最も大きい代表経路のみ残した", rep=f"{q['group']['id']}経由の経路"))
+for r in RL:
+    if byR0[r["id"]] and not r.get("screened") and not any(p["result"] is r for p in k4):
+        r["lost"] = True
+N_BEFORE_P, N_BEFORE_R = len(paths), sum(1 for r in RL if byR0[r["id"]])
+paths = k4
+
 # ---------- 経路属性の計算 ----------
 cond_prob = lambda cs: eval("*".join(str(L.COND[c][1]) for c in cs)) if cs else 1.0
 key_count = Counter((p["result"]["id"], tuple(sorted(c["id"] for c, _ in p["causes"]))) for p in paths)
@@ -91,7 +167,7 @@ for r in RL:
     r["adopted"] = bool(adopted_refs)
     r["judg"] = rj[0][0] if len({j[0] for j in rj}) == 1 else "／".join(sorted({j[0] for j in rj}))
     r["jcom"] = rj[0][1] if not L.REVIEW_RECEIVED else "；".join(f"{sid}:{L.judg(sid)[1]}" for sid in r["refs"] if L.judg(sid)[1])
-order = sorted([r for r in RL if r["adopted"]], key=lambda r: (-r["risk"], -r["sev"], -r["G"], r["id"]))
+order = sorted([r for r in RL if r["adopted"] and not r.get("screened")], key=lambda r: (-r["risk"], -r["sev"], -r["G"], r["id"]))
 
 wb = Workbook()
 # =========================== 01 ===========================
@@ -106,6 +182,8 @@ n = i + 2
 ws.cell(row=n, column=1, value="【追加入力】重大度マトリクス（結果事象の深刻度の評価指標）およびリスクマトリックス（発生可能性VH〜VL×被害重大度）を受領。内容は06シートに転記した。").font = NOTE
 ws.cell(row=n + 1, column=1, value=("【第1段レビュー判定】受講生のレビュー結果（採用・修正・除外・要確認）は本作成時点で未受領のため、第1段の全原因・結果を「採用（仮）」として扱った。"
                                     if not L.REVIEW_RECEIVED else "【第1段レビュー判定】stage1_review.csv の判定を反映した。")).font = Font(name=FN, size=10, bold=True, color="C00000")
+ws.cell(row=n + 2, column=1, value="【絞り込み（スクリーニング）】依頼者の指示により第2段で検討対象を絞った（低重大度、代表シナリオへの包含、潜在条件のみの経路、中間事象型原因の重複、重複経路の統合）。除外は07シートに理由とともに記録し、削除していない。"
+        "あわせて、漏洩起因の蒸気雲爆発・複数死亡・建屋被害・構外影響に大量放出の条件（ADD-C02）を追加し、液封未確立の原因を潜在条件から人的誤り（1E-2/年）へ修正した。").font = Font(name=FN, size=10, bold=True, color="1F3864")
 
 
 def header(ws, row, heads, widths, height=40):
@@ -171,8 +249,8 @@ for i, r in enumerate(RL, 4):
     put(ws3, i, 9, r["swhy"]); put(ws3, i, 10, r["judg"]); put(ws3, i, 11, r["jcom"])
     put(ws3, i, 12, "、".join(r["refs"]))
     put(ws3, i, 13, f'=COUNTIF({Q(S04)}!$AB:$AB,A{i})-COUNTIFS({Q(S04)}!$AB:$AB,A{i},{Q(S04)}!$Z:$Z,"原因未確定*")', "0")
-    st = "除外" if not r["adopted"] else ("原因未確定" if not byR[r["id"]] else "ツリー作成済")
-    put(ws3, i, 14, st, fill=RED if st == "原因未確定" else None)
+    st = "除外" if not r["adopted"] else (f"絞り込み：{r['screened']}" if r.get("screened") else ("原因未確定" if not byR[r["id"]] else "ツリー作成済"))
+    put(ws3, i, 14, st, fill=RED if st == "原因未確定" else (GRY if st.startswith("絞り込み") else None))
 LAST3 = 3 + len(RL)
 ws3.freeze_panes = "C4"
 ws3.auto_filter.ref = f"A3:N{LAST3}"
@@ -445,7 +523,42 @@ for k, (kind, txt, rel, why, v) in enumerate(extra, 1):
 ws5.freeze_panes = "D5"
 
 wb.move_sheet(S06, offset=0)
-wb._sheets = [wb[n] for n in ["01_第2段プロンプト", S02, S03, S04, S05, S06]]
+# =========================== 07 絞り込み記録 ===========================
+S07 = "07_絞り込み記録"
+ws7 = wb.create_sheet(S07)
+header(ws7, 1, ["絞り込みID", "区分", "結果事象ID", "結果事象", "採用重大度", "除外した経路（原因事象ID）", "第1段参照ID", "除外した経路の頻度（仮値込み）", "理由", "代表する結果事象・経路", "受講生判断（採用／修正／除外／要確認）"],
+       [10, 18, 10, 50, 8, 34, 26, 13, 58, 30, 16])
+dv7 = DataValidation(type="list", formula1='"採用,修正,除外,要確認"', allow_blank=True)
+ws7.add_data_validation(dv7)
+for i, sc in enumerate(SCREEN, 2):
+    r, p = sc["r"], sc["p"]
+    put(ws7, i, 1, f"SC-{i - 1:05d}"); put(ws7, i, 2, sc["kind"], fill=GRY); put(ws7, i, 3, r["id"]); put(ws7, i, 4, r["text"])
+    put(ws7, i, 5, r["sev0"], "0")
+    if p is None:
+        put(ws7, i, 6, f"結果事象全体（{len(byR0[r['id']])}経路）"); put(ws7, i, 7, "、".join(r["refs"]))
+        put(ws7, i, 8, sum(q["H0"] for q in byR0[r["id"]]), FREQFMT)
+    else:
+        put(ws7, i, 6, "＋".join(f"{c['id']}｜{c['text'][:40]}" for c, _ in p["causes"]) + f"（{p['group']['id']}経由）")
+        put(ws7, i, 7, "、".join([sid for _, sid in p["causes"]] + [p["rsid"]]))
+        put(ws7, i, 8, p["H0"], FREQFMT)
+    put(ws7, i, 9, sc["reason"]); put(ws7, i, 10, sc["rep"]); put(ws7, i, 11, None)
+    dv7.add(f"K{i}")
+L7 = 1 + len(SCREEN)
+ws7.freeze_panes = "D2"
+ws7.auto_filter.ref = f"A1:K{L7}"
+cnt7 = Counter(sc["kind"] for sc in SCREEN)
+r0 = L7 + 2
+ws7.cell(row=r0, column=1, value="絞り込みの集計").font = F9B
+summ = [("絞り込み前の経路数", N_BEFORE_P), ("絞り込み後の経路数（04シート）", len(paths)), ("絞り込み前の結果事象数（経路あり）", N_BEFORE_R),
+        ("絞り込み後の結果事象数（04シート）", len(order))] + [(f"区分：{k}", v) for k, v in cnt7.items()] + \
+       [("絞り込みで全経路を失い原因未確定となった結果事象", sum(1 for r in RL if r.get("lost")))]
+for j, (a_, v_) in enumerate(summ, r0 + 1):
+    ws7.cell(row=j, column=2, value=a_).font = F9
+    ws7.cell(row=j, column=3, value=v_).font = F9B
+ws7.cell(row=j + 2, column=2, value=("絞り込みの方針：第1段の網羅的な洗い出しは保持し、第2段で物理的な成立性・重複・代表性・重大度に基づいて検討対象を絞った。"
+                                     "除外は削除ではなく本シートに理由と代表シナリオを記録しており、受講生レビューで復帰（採用）できる。")).font = NOTE
+
+wb._sheets = [wb[n] for n in ["01_第2段プロンプト", S02, S03, S04, S05, S06, S07]]
 wb.save(OUT)
 print("causes", len(CL_), "results", len(RL), "paths", len(paths), "rows", LAST4 - HR, "unlinked", sum(1 for x in RL if x["adopted"] and not byR[x["id"]]))
 print(Counter(r_["risk"] for r_ in order).most_common())
