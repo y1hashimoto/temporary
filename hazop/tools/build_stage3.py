@@ -17,15 +17,15 @@ log = lambda s: (LOG.append(s), print(s))
 
 res = M.load_stage2(STAGE2)
 inst = M.build_catalog(res)
-ACC = M.ACC_ORG
+ACC = M.ACC_PROV   # 依頼により暫定基準を採用（組織基準は参考比較）
 infoA = O.solve(res, inst, ACC, "A", log)
 infoB = O.solve(res, inst, ACC, "B", log)
-# 参考：暫定基準での選定
+# 参考：組織基準（重大度マトリクスの受容可能頻度）での選定
 for r in res.values():
     r.pop("status0", None)
-infoPA = O.solve(res, inst, M.ACC_PROV, "A", log)
-infoPB = O.solve(res, inst, M.ACC_PROV, "B", log)
-O.prepare(res, inst, ACC)   # 組織基準の状態へ戻す
+infoPA = O.solve(res, inst, M.ACC_ORG, "A", log)
+infoPB = O.solve(res, inst, M.ACC_ORG, "B", log)
+O.prepare(res, inst, ACC)   # 採用基準（暫定基準）の状態へ戻す
 selA, selB = set(infoA["sel"]), set(infoB["sel"])
 
 
@@ -154,11 +154,11 @@ ws.auto_filter.ref = f"A1:A{i}"
 # =================== 08（参照先） ===================
 ws8 = wb.create_sheet(S08)
 header(ws8, ["経路ID", "結果事象ID", "対策番号", "対策名称", "適用ゾーン", "判定（有効／要確認）", "結果事象×対策の初出（1）", "備考", "",
-             "重大度レベル", "受容年間発生頻度（採用：組織基準）", "参考：プロンプト暫定基準"], [11, 11, 8, 40, 14, 12, 10, 50, 3, 10, 16, 16])
+             "重大度レベル", "受容年間発生頻度（採用：プロンプト暫定基準）", "参考：組織基準（重大度マトリクス）"], [11, 11, 8, 40, 14, 12, 10, 50, 3, 10, 16, 16])
 for i, s_ in enumerate(range(1, 6), 2):
-    put(ws8, i, 10, s_, "0"); put(ws8, i, 11, ACC[s_], FREQ, YEL); put(ws8, i, 12, M.ACC_PROV[s_], FREQ)
-put(ws8, 7, 10, "根拠"); put(ws8, 7, 11, "受領した重大度マトリクスの『受容可能な事故発生頻度』（組織固有基準として優先）")
-put(ws8, 7, 12, "プロンプト記載の暫定基準（参考比較のみ）")
+    put(ws8, i, 10, s_, "0"); put(ws8, i, 11, ACC[s_], FREQ, YEL); put(ws8, i, 12, M.ACC_ORG[s_], FREQ)
+put(ws8, 7, 10, "根拠"); put(ws8, 7, 11, "第3段プロンプトの暫定基準（演習依頼者の指示により採用）")
+put(ws8, 7, 12, "重大度マトリクスの『受容可能な事故発生頻度』（100倍厳しい。参考比較のみ）")
 ACCR = f"{Q(S08)}!$K$2:$K$6"
 r8 = 2
 seen = set()
@@ -421,8 +421,8 @@ method = [
     ("求解状況（案B）", f"第1段 {infoB['status'][0]}（10年コスト {infoB['cost']:.1f}百万円）→ 第2段 {infoB['status'][1]}、探索ノード {infoB['nodes']}、{infoB['secs']:.1f}秒"),
     ("同点時の優先順位", "案A：対策数→10年コスト→重大度4以上の経路への適用数（多い方を優先）。案B：10年コスト→対策数→重大度4以上の経路への適用数。"),
     ("比較：貪欲法の結果", f"対策数優先の貪欲法 {gA['count']}件・{gA['cost']:.1f}百万円／コスト効率優先の貪欲法 {gB['count']}件・{gB['cost']:.1f}百万円（いずれも最適化解以上）"),
-    ("受容頻度の基準", "受領した重大度マトリクスの『受容可能な事故発生頻度』（S1:1E-2〜S5:1E-6 /年）を組織固有基準として採用。プロンプトの暫定基準は参考比較のみ。"),
-    ("参考：暫定基準で選定した場合", f"案A {infoPA['count']}件・{infoPA['cost']:.1f}百万円、案B {infoPB['count']}件・{infoPB['cost']:.1f}百万円。全候補でも未達となる結果事象 {infoPA['nunach']}件（組織基準では {infoA['nunach']}件）。"),
+    ("受容頻度の基準", "第3段プロンプトの暫定基準（S1:1E+0〜S5:1E-4 /年）を採用（演習依頼者の指示）。重大度マトリクスの『受容可能な事故発生頻度』（S1:1E-2〜S5:1E-6 /年、100倍厳しい）は参考比較のみ。"),
+    ("参考：組織基準で選定した場合", f"案A {infoPA['count']}件・{infoPA['cost']:.1f}百万円、案B {infoPB['count']}件・{infoPB['cost']:.1f}百万円。全候補でも未達となる結果事象 {infoPA['nunach']}件（暫定基準では {infoA['nunach']}件）。"),
     ("従属対策の扱い", "同一独立性クラスの対策が同一経路に重なる場合は倍率の積をとらず単一効果のみ計上（追加採用で計算上のリスクが増える逆転を避けるため、採用済みのうち1件の効果）。"),
     ("免責", "本成果は演習用の概略評価である。実設備への導入判断には、設計仕様、独立保護層の要件（SIL検証）、共通原因故障、保全性、詳細コスト、変更管理の追加確認が必要。"),
 ]
