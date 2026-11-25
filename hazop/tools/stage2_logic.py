@@ -247,9 +247,27 @@ def conditions(rtext, group, ctexts=()):
 # ------------------------------------------------------------------
 # 重大度（添付の重大度マトリクスに準拠）
 # ------------------------------------------------------------------
+SCALE_NAME = {"S": "小規模放出源（シール・継手・取付部等）", "M": "中規模放出源（配管・熱交換器・圧縮機等）", "L": "大規模放出源（塔・ドラム・反応器等の容器）"}
+
+
+def source_scale(t):
+    """結果事象の放出源（文頭の場所）から規模を判定：L=容器在庫、M=配管・機器、S=シール・継手等"""
+    loc = re.split(r"起因|からの|から|の火災|の火炎", t)[0]
+    if re.search(r"本体|塔頂系|塔体|塔・ドラム|放出点|貯蔵|外部受入|T-0\d・|・D-\d01|D-\d01・|D-\d01本体|容器|閉鎖排液系受槽|閉鎖ガス処理ヘッダ|複数の|複数機器|V-00破損部|R-01過熱部|底部ドレン", loc):
+        return "L"
+    if re.search(r"配管|ライン|ヘッダ|合流部|コイル|チューブ|管板|リボイラ|K-02|E-\d|ドレン|排液", loc):
+        return "M"
+    if re.search(r"シール部|サンプリング点|取付部|継手|計装取出し|開放部|保護管", loc):
+        return "S"
+    return "M"
+
+
 def severity(t):
+    """重大度（受領した重大度マトリクスに準拠）。
+    ビジネス・環境は放出源の規模で段階づけ（第2段の重大度見直し）。人身（安全）は死傷の内容で判定し規模に依存させない"""
     s = e = b = None
     why = []
+    sc = source_scale(t)
     if "複数" in t and re.search(r"死亡", t):
         s = 5; why.append("安全5：複数のオンサイト死亡")
     elif re.search(r"死亡", t):
@@ -260,21 +278,35 @@ def severity(t):
         s = 4; why.append("安全4：死亡")
     # 環境
     if re.search(r"土壌・公共水域|公共水域・土壌|排水系・土壌|土壌・排水系", t) and "消火" not in t:
-        e = 4; why.append("環境4：土壌・水域汚染で数か月〜数年の浄化")
+        e = 3 if sc == "S" else 4
+        why.append(f"環境{e}：土壌・水域汚染（{SCALE_NAME[sc]}のため{'流出量は限定的で数週間の浄化' if e == 3 else '数か月〜数年の浄化'}）")
     elif re.search(r"消火排水|冷却水ブローダウン|排水系・水域|使用済触媒|凝縮水・熱媒が排水系", t):
         e = 3; why.append("環境3：一時的放出、数週間での浄化")
     elif re.search(r"大気へ直接放出|大規模な可燃性蒸気雲|大量の未燃", t):
         e = 3; why.append("環境3：一時的な大量放出")
     elif re.search(r"VOC|黒煙|大気環境汚染|一酸化炭素|大気中に放出|大気へ排出", t):
         e = 2; why.append("環境2：軽微な大気排出")
-    # ビジネス
-    if re.search(r"構外に及び|BLEVE|連鎖損傷|蒸気雲爆発", t):
+    # ビジネス（放出源の規模で段階づけ）
+    if re.search(r"構外に及び|BLEVE", t):
         b = 5; why.append("ビジネス5：広域設備損壊・社会的影響（1億ドル以上）")
+    elif "連鎖損傷" in t:
+        b = 5 if sc == "L" else 4
+        why.append(f"ビジネス{b}：火災による連鎖損傷（{SCALE_NAME[sc]}）")
+    elif "蒸気雲爆発" in t:
+        b = 4 if sc == "S" else 5
+        why.append(f"ビジネス{b}：蒸気雲爆発による設備破壊（{SCALE_NAME[sc]}）")
     elif re.search(r"長期操業停止|長期停止|プラント全体の長期停止", t):
-        b = 5 if re.search(r"火災|爆発", t) else 4
-        why.append(f"ビジネス{b}：長期停止")
-    elif re.search(r"噴流火災|プール火災|火炉爆発|火球|内部爆発|破裂|冷却塔の火災", t):
+        if re.search(r"火災|爆発", t):
+            b = {"L": 5, "M": 4, "S": 3}[sc]
+            why.append(f"ビジネス{b}：火災・爆発後の停止（{SCALE_NAME[sc]}："
+                       + {"L": "容器・塔の損壊で半年以上の停止を想定", "M": "配管・機器の損傷で数か月の停止を想定", "S": "局所火災で数週間の停止を想定"}[sc] + "）")
+        else:
+            b = 4; why.append("ビジネス4：長期停止")
+    elif re.search(r"火炉爆発|内部爆発|破裂|冷却塔の火災", t):
         b = 4; why.append("ビジネス4：主要設備の損壊（2500万〜1億ドル）")
+    elif re.search(r"噴流火災|プール火災|火球", t):
+        b = 4 if sc == "L" else 3
+        why.append(f"ビジネス{b}：火災による設備損傷（{SCALE_NAME[sc]}）")
     elif re.search(r"K-02.*(破損|損傷)|圧縮機.*破損", t):
         b = 4; why.append("ビジネス4：圧縮機の損傷と長期停止")
     elif re.search(r"触媒交換|触媒の抜出し|触媒寿命|触媒.*失活|触媒性能", t):
