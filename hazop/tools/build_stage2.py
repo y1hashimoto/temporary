@@ -36,7 +36,7 @@ CL_ = list(causes.values())
 RL = list(results.values())
 
 # ---------- 中間事象型の原因（上流偏差の記述）を判定 ----------
-INTER = re.compile(r"（上記）|（下記）|上流ゾーンの|上流の流量|上流の軽質分|からのガス吹抜け|からの逆流|制御の失敗|設定値の異常|制御の不調|による高温|による軽質分|過大流量|流量の低下|流量喪失|過熱（上流|V-01の液位上昇|V-01液位の上昇|同時途絶|冷却喪失|冷却能力の低下|加熱不足|加熱喪失|による液同伴|循環ガスへの液同伴|液を伴う放出|背圧上昇|K-02停止による|補給水素の過大|補給水素の途絶|容量低下|下流の閉塞|閉塞による上流側|状態でのP-02停止|受槽圧力の低下|液位上昇による|非凝縮ガスの蓄積と|軽質分除去不良|圧力の異常低下|H-01の失火・燃料不足|液偏流")
+INTER = re.compile(r"（上記）|（下記）|上流ゾーンの|上流の流量|上流の軽質分|からのガス吹抜け|からの逆流|制御の失敗|設定値の異常|制御の不調|による高温|による軽質分|過大流量|流量の低下|流量喪失|過熱（上流|V-01の液位上昇|V-01液位の上昇|同時途絶|冷却喪失|冷却能力の低下|加熱不足|加熱喪失|による液同伴|循環ガスへの液同伴|液を伴う放出|背圧上昇|K-02停止による|補給水素の過大|補給水素の途絶|容量低下|下流の閉塞|閉塞による上流側|状態でのP-02停止|受槽圧力の低下|液位上昇による|非凝縮ガスの蓄積と|軽質分除去不良|圧力の異常低下|H-01の失火・燃料不足|液偏流|上流機器の過充填")
 for c in CL_:
     c["inter"] = bool(INTER.search(c["text"]))
     if c["inter"]:
@@ -420,7 +420,7 @@ for n, res in enumerate(order, 1):
         mech = "機器健全性" if L.INTEGRITY_GW.search(g["gw"]) else "物質・圧力" if re.search(r"圧力|流量|吹抜|逆流|液位|過充填|液同伴", g["gw"]) else "組成" if "組成" in g["gw"] else "温度・エネルギー" if re.search(r"温度|加熱|冷却", g["gw"] + g["equip"]) else "作業・操作" if re.search(r"操作|作業|保全|起動|サンプリング|ドレン", g["equip"] + g["gw"]) else "物質・エネルギー"
         put(ws4, r, 18, f"[{mech}] {txt}")
         chain = " → ".join(L.COND[c_][0].split("（")[0] for c_ in p["conds"])
-        put(ws4, r, 19, f"{g['id']} {g['equip']}：{g['gw']}" + (f" ⇒ {chain}" if chain else ""))
+        put(ws4, r, 19, f"{g['id']} {g['equip']}：{g['gw']}" + (" ⇒ 液が放圧・ベント系から閉鎖ガス処理系へ流入（Z0-06へ結び直し）" if p.get("relink") else "") + (f" ⇒ {chain}" if chain else ""))
         put(ws4, r, 20, "；".join(f"{c_} {L.COND[c_][0]}（仮 {L.COND[c_][1]}）" for c_ in p["conds"]) or "なし（第1段の原因のみで成立）",
             fill=YEL if p["conds"] else None)
         put(ws4, r, 21, f"={'*'.join(f'{Q(S05)}!$F${5 + list(L.COND).index(c_)}' for c_ in p['conds'])}" if p["conds"] else 1, PFMT, YEL if p["conds"] else None)

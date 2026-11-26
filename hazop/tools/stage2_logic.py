@@ -421,4 +421,25 @@ def build():
         for i, c, sid in cids:
             if i not in used and adopted(sid):
                 unused_cause_refs.append((c, sid, g))
+    # ---- 中間事象型原因「上流機器の過充填」の結び直し（第3段の検討で追加）----
+    # Z0-06の結果事象へ、上流の各容器・塔の過充填偏差（物理的原因）からの経路を追加する。
+    # 経路の偏差群は上流側（例：Z1-11）とし、その位置の高高液位インターロック等が遮断位置となる。
+    gz06 = next(g for g in h.GROUPS if g["id"] == "Z0-06")
+    up_groups = ["Z1-11", "Z2-07", "Z2-14", "Z3-07", "Z3-14", "Z6-06", "Z7-08", "Z7-14"]
+    seen_k = set()
+    add = []
+    for p in paths:
+        if p["group"]["id"] in up_groups:
+            key = (p["group"]["id"], tuple(sid for _, sid in p["causes"]))
+            if key in seen_k:
+                continue
+            seen_k.add(key)
+            for i, (t, cats) in enumerate(gz06["results"], 1):
+                rsid = f"Z0-06-R{i:02d}"
+                if not adopted(rsid):
+                    continue
+                r = results[t]
+                add.append(dict(group=p["group"], causes=p["causes"], result=r, rsid=rsid, rz=0,
+                                conds=conditions(t, gz06, [c["text"] for c, _ in p["causes"]]), relink="Z0-06"))
+    paths.extend(add)
     return causes, results, paths, unused_cause_refs
