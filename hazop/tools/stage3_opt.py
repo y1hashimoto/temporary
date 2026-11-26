@@ -26,7 +26,8 @@ def prepare(res, inst, ACC):
     return targets, unach, ok
 
 
-def solve(res, inst, ACC, mode, log=print):
+def solve(res, inst, ACC, mode, log=print, fixed=frozenset()):
+    """fixed：既に採用済み（費用・件数に計上しない）の対策。操業損失の追加対策選定に使用"""
     targets, unach, ok = prepare(res, inst, ACC)
     meas = [k for k, m in inst.items() if m["f"] is not None]
     cost = {k: inst[k]["ini"] + 10 * inst[k]["ann"] for k in meas}
@@ -65,6 +66,9 @@ def solve(res, inst, ACC, mode, log=print):
         def row(lo, hi, idx, val):
             h.addRow(lo, hi, len(idx), np.array(idx, dtype=np.int32), np.array(val, dtype=np.float64))
         x = {k: col(0, 1, True) for k in used}
+        for k in used:
+            if k in fixed:
+                h.changeColBounds(x[k], 1.0, 1.0)
         for r, us in units:
             ridx, rval, const = [], [], 0.0
             for K, H in us:
@@ -84,20 +88,21 @@ def solve(res, inst, ACC, mode, log=print):
                         ridx.append(y); rval.append(H * M.path_factor(S, inst) / r["A"])
                 row(1, 1, ys, [1] * len(ys))
             row(-INF, 1.0 - const / r["A"] + 1e-9, ridx, rval)
-        xi = [x[k] for k in used]
+        free = [k for k in used if k not in fixed]
+        xi = [x[k] for k in free]
         cvec = {x[k]: 0.0 for k in used}
         if mode == "A":
             if stage == 1:
-                for k in used: cvec[x[k]] = 1.0
+                for k in free: cvec[x[k]] = 1.0
             else:
                 row(fix, fix, xi, [1] * len(xi))
-                for k in used: cvec[x[k]] = cost[k] - 0.01 * w[k] / wmax
+                for k in free: cvec[x[k]] = cost[k] - 0.01 * w[k] / wmax
         else:
             if stage == 1:
-                for k in used: cvec[x[k]] = cost[k]
+                for k in free: cvec[x[k]] = cost[k]
             else:
-                row(-INF, fix + 1e-6, xi, [cost[k] for k in used])
-                for k in used: cvec[x[k]] = 1.0 - 0.01 * w[k] / wmax
+                row(-INF, fix + 1e-6, xi, [cost[k] for k in free])
+                for k in free: cvec[x[k]] = 1.0 - 0.01 * w[k] / wmax
         for j, c in cvec.items():
             h.changeColCost(j, c)
         h.run()
@@ -114,7 +119,7 @@ def solve(res, inst, ACC, mode, log=print):
     else:
         fix = v1
     st2, v2, xs, _, nodes2 = build_solve(2, fix)
-    sel = [k for k in used if xs[k] > 0.5]
+    sel = [k for k in used if xs[k] > 0.5 and k not in fixed]
     info = dict(mode=mode, status=(st1, st2), obj1=v1, nvar=nvar, nbin=len(used), nunits=sum(len(us) for _, us in units),
                 ntarget=len(targets), nunach=len(unach), nok=len(ok), secs=time.time() - t0, sel=sel,
                 cost=sum(cost[k] for k in sel), count=len(sel), candidates=len(meas), nodes=(nodes1, nodes2))

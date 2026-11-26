@@ -15,8 +15,15 @@ STAGE2, OUT = sys.argv[1], sys.argv[2]
 LOG = []
 log = lambda s: (LOG.append(s), print(s))
 
-res = M.load_stage2(STAGE2)
-inst = M.build_catalog(res)
+RES_ALL = M.load_stage2(STAGE2)
+inst = M.build_catalog(RES_ALL)
+# 安全／操業損失の分離：人身・環境の影響がなく、漏洩・火災・爆発・死傷・汚染を含まない結果事象を「操業損失」とする
+LOCRE = re.compile(r"漏洩|漏入|放出|火災|爆発|破裂|火球|BLEVE|蒸気雲|流出|噴出|溢流|溢出|着火|火炎|焼損|死亡|重傷|傷害|凍傷|熱傷|汚染|酸素欠乏")
+for r in RES_ALL.values():
+    r["cat"] = "操業損失" if ("人身" not in r["kinds"] and "環境" not in r["kinds"] and not LOCRE.search(r["text"])) else "安全"
+res = OrderedDict((k, v) for k, v in RES_ALL.items() if v["cat"] == "安全")
+RO = OrderedDict((k, v) for k, v in RES_ALL.items() if v["cat"] == "操業損失")
+log(f"safety {len(res)} operational {len(RO)}")
 ACC = M.ACC_PROV   # 依頼により暫定基準を採用（組織基準は参考比較）
 infoA = O.solve(res, inst, ACC, "A", log)
 infoB = O.solve(res, inst, ACC, "B", log)
@@ -72,6 +79,10 @@ def greedy(mode):
 t0 = time.time()
 gA, gB = greedy("A"), greedy("B")
 log(f"greedy A {gA} B {gB} {time.time() - t0:.1f}s")
+infoOA = O.solve(RO, inst, ACC, "B", log, fixed=frozenset(selA))
+infoOB = O.solve(RO, inst, ACC, "B", log, fixed=frozenset(selB))
+opA, opB = set(infoOA["sel"]), set(infoOB["sel"])
+log(f"operational add-on: baseA {len(opA)} {infoOA['cost']:.1f} / baseB {len(opB)} {infoOB['cost']:.1f}")
 
 # ---------- 対策番号の採番 ----------
 freqm = [k for k in inst if inst[k]["f"]]
@@ -101,6 +112,7 @@ ST_FILL = {"両案で採用": PatternFill("solid", fgColor="E2EFDA"), "対策数
            "コスト最少案のみで採用": PatternFill("solid", fgColor="FCE4E4"), "いずれの案でも未採用": PatternFill("solid", fgColor="EDEDED")}
 RED = PatternFill("solid", fgColor="F8CBAD")
 YEL = PatternFill("solid", fgColor="FFF2CC")
+OPF = PatternFill("solid", fgColor="FFE699")   # 操業損失の追加対策
 HATCH = PatternFill(patternType="lightUp", fgColor="C00000", bgColor="FFFFFF")
 FREQ = '0.0E+00" /年"'
 MONEY = '#,##0.0" 百万円"'
@@ -153,8 +165,8 @@ ws.auto_filter.ref = f"A1:A{i}"
 
 # =================== 08（参照先） ===================
 ws8 = wb.create_sheet(S08)
-header(ws8, ["経路ID", "結果事象ID", "対策番号", "対策名称", "適用ゾーン", "判定（有効／要確認）", "結果事象×対策の初出（1）", "備考", "",
-             "重大度レベル", "受容年間発生頻度（採用：プロンプト暫定基準）", "参考：組織基準（重大度マトリクス）"], [11, 11, 8, 40, 14, 12, 10, 50, 3, 10, 16, 16])
+header(ws8, ["経路ID", "結果事象ID", "対策番号", "対策名称", "適用ゾーン", "判定（有効／要確認）", "結果事象×対策の初出（1）", "備考", "区分（安全／操業損失）",
+             "重大度レベル", "受容年間発生頻度（採用：プロンプト暫定基準）", "参考：組織基準（重大度マトリクス）"], [11, 11, 8, 40, 14, 12, 10, 50, 10, 10, 16, 16])
 for i, s_ in enumerate(range(1, 6), 2):
     put(ws8, i, 10, s_, "0"); put(ws8, i, 11, ACC[s_], FREQ, YEL); put(ws8, i, 12, M.ACC_ORG[s_], FREQ)
 put(ws8, 7, 10, "根拠"); put(ws8, 7, 11, "第3段プロンプトの暫定基準（演習依頼者の指示により採用）")
@@ -162,19 +174,19 @@ put(ws8, 7, 12, "重大度マトリクスの『受容可能な事故発生頻度
 ACCR = f"{Q(S08)}!$K$2:$K$6"
 r8 = 2
 seen = set()
-for r in res.values():
+for r in RES_ALL.values():
     for p in r["paths"]:
         for k, cred, note in p["app"]:
             fl = 0
             if cred and (r["id"], k) not in seen:
                 seen.add((r["id"], k)); fl = 1
-            for j, v in enumerate([p["pid"], r["id"], NO[k], inst[k]["name"], M.ZSH[k[1]], "有効" if cred else "要確認", fl, note], 1):
+            for j, v in enumerate([p["pid"], r["id"], NO[k], inst[k]["name"], M.ZSH[k[1]], "有効" if cred else "要確認", fl, note, r["cat"]], 1):
                 c = ws8.cell(row=r8, column=j, value=v); c.font = F9
             r8 += 1
 LAST8 = r8 - 1
 ws8.freeze_panes = "A2"
-ws8.auto_filter.ref = f"A1:H{LAST8}"
-APP_B, APP_C, APP_F, APP_G = (f"{Q(S08)}!${c}$2:${c}${LAST8}" for c in "BCFG")
+ws8.auto_filter.ref = f"A1:I{LAST8}"
+APP_B, APP_C, APP_F, APP_G, APP_I = (f"{Q(S08)}!${c}$2:${c}${LAST8}" for c in "BCFGI")
 
 # =================== 02 対策カタログ ===================
 ws2 = wb.create_sheet(S02, 1)
@@ -210,8 +222,8 @@ for i, k in enumerate(ORDER, 2):
     put(ws2, i, 6, ("、".join(cids[:15]) + (f" ほか{len(cids) - 15}件" if len(cids) > 15 else "")) if cids else ("—（偏差位置で作用）" if m["f"] else "—"))
     put(ws2, i, 7, ("偏差：" + "、".join(sorted(m["groups"]))) if m["groups"] else (f"対象原因を含む経路（{len(m['paths'])}経路）" if m["f"] else m["pos"]))
     put(ws2, i, 8, ("、".join(rids[:12]) + (f" ほか{len(rids) - 12}件（06シート参照）" if len(rids) > 12 else "")) if rids else "—")
-    put(ws2, i, 9, f'=COUNTIFS({APP_C},A{i},{APP_F},"有効")', "0")
-    put(ws2, i, 10, f'=COUNTIFS({APP_C},A{i},{APP_F},"有効",{APP_G},1)', "0")
+    put(ws2, i, 9, f'=COUNTIFS({APP_C},A{i},{APP_F},"有効",{APP_I},"安全")', "0")
+    put(ws2, i, 10, f'=COUNTIFS({APP_C},A{i},{APP_F},"有効",{APP_G},1,{APP_I},"安全")', "0")
     if m["f"]:
         put(ws2, i, 11, m["f"], FRAC, font=F9B)
     else:
@@ -234,9 +246,15 @@ for i, k in enumerate(ORDER, 2):
     put(ws2, i, 22, "／".join(need) or None, fill=RED if need and m["f"] else None, font=REDF if need and m["f"] else F9)
     put(ws2, i, 23, None)
     put(ws2, i, 24, f"{k[0]}@Z{k[1]}")
+    put(ws2, i, 25, f'=COUNTIFS({APP_C},A{i},{APP_F},"有効",{APP_I},"操業損失")', "0")
+    put(ws2, i, 26, "追加採用" if k in opB else ("安全対策で採用済" if k in selB and any(k == kk for r in RO.values() for p in r["paths"] for kk, c, _ in p["app"] if c) else "—"),
+        fill=OPF if k in opB else None)
 LAST2 = 1 + len(ORDER)
 ws2.freeze_panes = "C2"
-ws2.auto_filter.ref = f"A1:X{LAST2}"
+for j, (t, w) in enumerate([("操業損失で有効な経路数", 9), ("操業損失の追加対策（案B基準、09・10シート）", 16)], 25):
+    c = ws2.cell(row=1, column=j, value=t); c.font = HFONT; c.fill = PatternFill("solid", fgColor="7F6000"); c.alignment = CEN; c.border = BD
+    ws2.column_dimensions[CL(j)].width = w
+ws2.auto_filter.ref = f"A1:Z{LAST2}"
 CAT_A, CAT_K, CAT_J = (f"{Q(S02)}!${c}$2:${c}${LAST2}" for c in "AKJ")
 
 # =================== 03 / 04 ===================
@@ -244,7 +262,8 @@ NSLOT = 6
 CNT_SLOTS = Counter()
 
 
-def path_sheet(title, sel, plan):
+def path_sheet(title, sel, plan, resset=None, extra=frozenset()):
+    resset = res if resset is None else resset
     ws = wb.create_sheet(title)
     heads = ["結果事象番号", "結果事象", "結果発生ゾーン", "重大度", "リスク種類", "受容年間発生頻度（/年）", "対策前の結果事象年間発生頻度（/年）",
              "対策前の当該AND経路成立頻度（/年）", "対策後の当該AND経路成立頻度（/年）", "対策後の結果事象年間発生頻度（/年）", "受容可否", "未達時の区分（全候補での到達可否）"]
@@ -260,7 +279,7 @@ def path_sheet(title, sel, plan):
     c_com, c_bcom = c_n0 + NSLOT, c_n0 + NSLOT + 1
     r = 2
     blocks = []
-    for res_ in res.values():
+    for res_ in resset.values():
         plist = res_["paths"] or [None]
         s0, e0 = r, r + len(plist) - 1
         blocks.append((res_["id"], s0, e0))
@@ -293,7 +312,7 @@ def path_sheet(title, sel, plan):
             # 適用される採用対策
             app = []
             for k, cred, note in p["app"]:
-                if k in sel and all(k != a[0] for a in app):
+                if (k in sel or k in extra) and all(k != a[0] for a in app):
                     app.append((k, cred, note))
             app.sort(key=lambda a: NO[a[0]])
             # 同一クラス：最小倍率の1件のみ計上
@@ -309,7 +328,7 @@ def path_sheet(title, sel, plan):
                 col = 13 + 3 * n
                 if n < len(app):
                     k, cred, note = app[n]
-                    fill = ST_FILL[status(k)]
+                    fill = OPF if (k in extra and k not in sel) else ST_FILL[status(k)]
                     put(ws, r, col, mname(k), fill=fill)
                     put(ws, r, col + 1, M.ZSH[k[1]], fill=fill)
                     if not cred:
@@ -427,6 +446,7 @@ method = [
     ("比較：貪欲法の結果", f"対策数優先の貪欲法 {gA['count']}件・{gA['cost']:.1f}百万円／コスト効率優先の貪欲法 {gB['count']}件・{gB['cost']:.1f}百万円（いずれも最適化解以上）"),
     ("受容頻度の基準", "第3段プロンプトの暫定基準（S1:1E+0〜S5:1E-4 /年）を採用（演習依頼者の指示）。重大度マトリクスの『受容可能な事故発生頻度』（S1:1E-2〜S5:1E-6 /年、100倍厳しい）は参考比較のみ。"),
     ("参考：組織基準で選定した場合", f"案A {infoPA['count']}件・{infoPA['cost']:.1f}百万円、案B {infoPB['count']}件・{infoPB['cost']:.1f}百万円。全候補でも未達となる結果事象 {infoPA['nunach']}件（暫定基準では {infoA['nunach']}件）。"),
+    ("対象範囲", f"安全の結果事象（人身・環境の影響、または漏洩・火災・爆発・死傷・汚染を含むもの）{len(res)}件を対象に選定。操業損失（品質・触媒・機器損傷・停止）{len(RO)}件は分離し、09・10シートで追加対策を別に評価した。"),
     ("従属対策の扱い", "同一独立性クラスの対策が同一経路に重なる場合は倍率の積をとらず単一効果のみ計上（追加採用で計算上のリスクが増える逆転を避けるため、採用済みのうち1件の効果）。"),
     ("免責", "本成果は演習用の概略評価である。実設備への導入判断には、設計仕様、独立保護層の要件（SIL検証）、共通原因故障、保全性、詳細コスト、変更管理の追加確認が必要。"),
 ]
@@ -554,13 +574,81 @@ su = [
 for a, b in su:
     row7("起動・停止・保全時に別途検討すべき事項", a, b, need="操業モード別のHAZOP（手順HAZOP）で検討")
 nflag = sum(1 for r in res.values() for p in r["paths"] if p["flags"])
+row7("操業損失の分離", "09・10シート", f"操業損失{len(RO)}件は安全の対策選定・受容判定から分離した。未達の操業損失は10シートに記載。", need="事業判断（費用対効果）で採否を決める")
 row7("第2段から継承した未解決事項", "第2段04シートZ列", f"第2段で要確認（共通原因・重複計上・重複経路・AND次元・内部AND・時間順序・条件付き確率）とされた経路 {nflag}本は、第3段でも解消せず要確認として継承した。",
      need="第2段のレビュー（最小カットセット整理、共通原因の別ツリー化）が必要", red=True)
 LAST7 = r7 - 1
 ws7.freeze_panes = "C2"
 ws7.auto_filter.ref = f"A1:I{LAST7}"
 
-wb._sheets = [wb[n] for n in ["01_第3段プロンプト", S02, S03, S04, S05, S06, S07, S08]]
+# =================== 09 操業損失：経路別対策 ===================
+S09, S10 = "09_操業損失_経路別対策", "10_操業損失_集計"
+ws9, LAST9, _, _, _ = path_sheet(S09, selB, "B", RO, frozenset(opB))
+
+# =================== 10 操業損失：集計 ===================
+ws10 = wb.create_sheet(S10)
+header(ws10, ["項目", "案B（コスト最少）の安全対策を前提", "参考：案A（対策数最少）を前提", "備考"], [44, 30, 30, 70])
+H9 = f"{Q(S09)}!$AM$2:$AM${LAST9}"
+K9 = f"{Q(S09)}!$K$2:$K${LAST9}"
+L9 = f"{Q(S09)}!$L$2:$L${LAST9}"
+Z2 = f"{Q(S02)}!$Z$2:$Z${LAST2}"
+
+
+def frq_with(r, ks):
+    return sum(p["H"] * M.path_factor([k for k, c, _ in p["app"] if c and k in ks], inst) for p in r["paths"])
+
+
+okB = sum(1 for r in RO.values() if r["paths"] and frq_with(r, selB) <= r["A"] * (1 + 1e-9))
+okA = sum(1 for r in RO.values() if r["paths"] and frq_with(r, selA) <= r["A"] * (1 + 1e-9))
+costm = lambda ks: sum(inst[k]["ini"] + 10 * inst[k]["ann"] for k in ks)
+rows10 = [
+    ("操業損失の結果事象数", f"=COUNTIF({H9},1)", len(RO), "0", "人身・環境の影響がなく、漏洩・火災・爆発・死傷・汚染を含まない結果事象（品質・触媒・機器損傷・停止）"),
+    ("対策前に受容頻度以下", f'=COUNTIFS({H9},1,{L9},"対策前に受容")', sum(1 for r in RO.values() if r.get("status0") == "対策前に受容"), "0", "受容頻度は安全と同じ暫定基準（重大度別）"),
+    ("安全対策の波及効果だけで受容（静的集計）", okB, okA, "0", "安全のために採用した対策が操業損失の経路にも作用する効果"),
+    ("追加対策後に受容頻度以下", f'=COUNTIFS({H9},1,{K9},"受容")', None, "0", "09シートの判定（数式）"),
+    ("未達", f'=COUNTIFS({H9},1,{K9},"未達")', None, "0", ""),
+    ("　うち全候補を採用しても未達（追加検討が必要）", f'=COUNTIFS({H9},1,{L9},"追加検討*")', None, "0", "効果を創作せず追加検討とする（下表）"),
+    ("追加対策数", f'=COUNTIF({Z2},"追加採用")', len(opA), "0", "安全対策で採用済みの対策は費用・件数に含めない"),
+    ("追加対策の初期投資合計", f'=SUMIF({Z2},"追加採用",{Q(S02)}!$O$2:$O${LAST2})', sum(inst[k]["ini"] for k in opA), MONEY, ""),
+    ("追加対策の年間ランニングコスト合計", f'=SUMIF({Z2},"追加採用",{Q(S02)}!$P$2:$P${LAST2})', sum(inst[k]["ann"] for k in opA), MONEYY, ""),
+    ("追加対策の10年必要コスト合計", f'=SUMIF({Z2},"追加採用",{Q(S02)}!$R$2:$R${LAST2})', costm(opA), MONEY, "案A前提の列は静的集計値（参考）"),
+]
+for i, (lab, vb, va, fmt, note) in enumerate(rows10, 2):
+    put(ws10, i, 1, lab, font=F9B); put(ws10, i, 2, vb, fmt); put(ws10, i, 3, va, fmt); put(ws10, i, 4, note)
+r10 = 2 + len(rows10)
+put(ws10, r10, 1, "追加対策一覧（案B前提）", font=F9B)
+put(ws10, r10, 2, "、".join(f"{mname(k)}（{M.ZSH[k[1]]}、{frac(inst[k]['f'])}）" for k in sorted(opB, key=lambda k: NO[k])) or "なし", fill=OPF)
+ws10.merge_cells(start_row=r10, start_column=2, end_row=r10, end_column=4); ws10.row_dimensions[r10].height = 60
+r10 += 1
+put(ws10, r10, 1, "選定方法", font=F9B)
+put(ws10, r10, 2, f"安全の案Bで採用した{len(selB)}件を採用済み（費用0・固定）とし、操業損失の結果事象だけを制約として、追加対策の10年必要コストを最小化（同額時は件数最少）する整数最適化（HiGHS）。"
+    f"案B前提 {infoOB['status'][0]}／{infoOB['status'][1]}、案A前提 {infoOA['status'][0]}／{infoOA['status'][1]}。")
+ws10.merge_cells(start_row=r10, start_column=2, end_row=r10, end_column=4); ws10.row_dimensions[r10].height = 48
+r10 += 1
+put(ws10, r10, 1, "位置づけ", font=F9B)
+put(ws10, r10, 2, "安全HAZOP（人身・環境・プロセス安全事故）の対策選定から操業損失を分離した。操業損失は事業判断（費用対効果）で採否を決める参考資料であり、安全対策の受容判定には含めない。"
+    "セル色：薄黄（濃）＝操業損失のための追加対策、その他の色＝02シートの安全対策の採用状態。")
+ws10.merge_cells(start_row=r10, start_column=2, end_row=r10, end_column=4); ws10.row_dimensions[r10].height = 48
+ws10.freeze_panes = "A2"
+ws10.auto_filter.ref = f"A1:D{1 + len(rows10)}"
+r10 += 2
+hd = ["結果事象ID", "結果事象", "重大度", "受容年間発生頻度（/年）", "対策前の年間発生頻度（/年）", "対策後の年間発生頻度（/年）", "受容可否", "区分"]
+for j, t in enumerate(hd, 1):
+    c = ws10.cell(row=r10, column=j, value=t); c.font = HFONT; c.fill = HF; c.alignment = CEN; c.border = BD
+for c_, w in zip("EFGH", [14, 14, 9, 30]):
+    ws10.column_dimensions[c_].width = w
+for r in sorted(RO.values(), key=lambda r: (-r["S"], -r["G"])):
+    r10 += 1
+    put(ws10, r10, 1, r["id"]); put(ws10, r10, 2, r["text"]); put(ws10, r10, 3, r["S"], "0")
+    put(ws10, r10, 4, f"=INDEX({ACCR},C{r10})", FREQ)
+    put(ws10, r10, 5, f"=SUMIFS({Q(S09)}!$H$2:$H${LAST9},{Q(S09)}!$AK$2:$AK${LAST9},A{r10})", FREQ)
+    put(ws10, r10, 6, f"=SUMIFS({Q(S09)}!$I$2:$I${LAST9},{Q(S09)}!$AK$2:$AK${LAST9},A{r10})", FREQ)
+    put(ws10, r10, 7, f'=IF(F{r10}<=D{r10}*(1+1E-9),"受容","未達")', al=CEN)
+    st0 = r.get("status0", "")
+    put(ws10, r10, 8, {"追加検討が必要": "追加検討が必要（全候補でも未達）"}.get(st0, st0), fill=RED if st0 == "追加検討が必要" else None)
+ws10.conditional_formatting.add(f"G2:G{r10}", CellIsRule(operator="equal", formula=['"未達"'], fill=RED, font=REDF))
+
+wb._sheets = [wb[n] for n in ["01_第3段プロンプト", S02, S03, S04, S05, S06, S07, S08, S09, S10]]
 wb.save(OUT)
 log(f"saved {OUT}: catalog {len(ORDER)} (freq {len(freqm)}), A {len(selA)} B {len(selB)}, unach {len(un)}")
 open("stage3_log.txt", "w").write("\n".join(LOG))
