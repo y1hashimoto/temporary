@@ -34,7 +34,51 @@ def load_stage2(path):
                 causes.append(dict(id=cid, text=ctext, zone=z, freq=row[10 + 3 * k]))
         res[rid]["paths"].append(dict(pid=row[28], H=row[7], causes=causes, route=row[17], inter=row[18], conds=row[19], cp=row[20],
                                       indep=row[21], flags=row[25] or "", group=row[18].split(" ")[0], s2ref=row[23]))
+    ws3 = wb["03_結果事象マスタ"]
+    for row in ws3.iter_rows(min_row=4, values_only=True):
+        if row[0] in res:
+            res[row[0]]["asp"] = {"S": row[4], "E": row[5], "B": row[6]}
     return res
+
+
+# ---------------------------------------------------------------------------
+# 事故進展抑制・被害軽減を「重大度の1段階低減」として扱う規則
+#   key: (低減する側面, 対象結果事象の正規表現, ゾーン規則)  ゾーン規則：zone=結果発生ゾーンに設置した場合のみ、all=全体（Z0）
+MIT_RULES = {
+    "GDI": ("B", r"蒸気雲爆発|起因の火災・爆発による設備損壊|噴流火災|連鎖損傷", "zone",
+            "漏洩の早期検知と在庫隔離で放出量・火災継続時間を制限し、設備損壊・停止期間を1段階低減"),
+    "FPR": ("B", r"BLEVE|連鎖損傷", "zone", "火災曝露時の容器・架構の強度低下を遅らせ、破裂・連鎖の規模を1段階低減"),
+    "BLD": ("S", r"計器室・仮設事務所", "all", "建屋の耐爆化・配置規制により屋内人員の死傷を1段階低減（複数死亡→単独死亡相当）"),
+    "DIK": ("E", r"土壌・公共水域|排水系・土壌|土壌・排水系", "all", "防液堤・排水遮断で流出範囲を構内に限定し、環境影響を1段階低減"),
+    "FWC": ("E", r"消火排水", "all", "消火排水の貯留で水域流出を防ぎ、環境影響を1段階低減"),
+    "ERP": ("B", r"構外に及び|屋内退避|避難", "all", "緊急時対応・構外通報体制により社会的影響を1段階低減"),
+}
+
+
+def attach_mitigation(res, inst):
+    """結果事象ごとに、重大度を1段階低減できる事故進展抑制・被害軽減対策の候補を付与する。
+    低減は支配的な側面（採用重大度を決めている側面）が単独で最大の場合のみ。複数対策の重ね掛けはしない（1段階まで）"""
+    for r in res.values():
+        r["Mit"] = []
+        asp = r.get("asp") or {}
+        vals = {k: v for k, v in asp.items() if v}
+        if not vals:
+            continue
+        sev = max(vals.values())
+        if sev <= 1:
+            continue
+        zones = {int(z) for z in re.findall(r"Z(\d)", str(r["zone"]))}
+        for key, (aspect, rx, zrule, why) in MIT_RULES.items():
+            if vals.get(aspect) != sev or any(v >= sev for k, v in vals.items() if k != aspect):
+                continue
+            if not re.search(rx, r["text"]):
+                continue
+            for (k2, z) in inst:
+                if k2 != key:
+                    continue
+                if zrule == "all" or z in zones:
+                    r["Mit"].append((k2, z))
+                    inst[(k2, z)].setdefault("mit_results", set()).add(r["id"])
 
 
 # ---------------------------------------------------------------------------

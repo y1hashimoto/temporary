@@ -11,6 +11,7 @@ def prepare(res, inst, ACC):
     for r in res.values():
         A = ACC[r["S"]]
         r["A"] = A
+        r["A2"] = A * 10 if r.get("Mit") else A    # 重大度を1段階低減した場合の受容頻度
         if not r["paths"]:
             r["status0"] = "原因未確定"
             continue
@@ -21,6 +22,8 @@ def prepare(res, inst, ACC):
         r["minfreq"] = mn
         if mn <= A * (1 + 1e-9):
             targets.append(r); r["status0"] = "対策で受容可能"
+        elif mn <= r["A2"] * (1 + 1e-9):
+            targets.append(r); r["status0"] = "重大度低減との組合せで受容可能"
         else:
             unach.append(r); r["status0"] = "追加検討が必要"
     return targets, unach, ok
@@ -30,9 +33,10 @@ def solve(res, inst, ACC, mode, log=print, fixed=frozenset()):
     """fixed：既に採用済み（費用・件数に計上しない）の対策。操業損失の追加対策選定に使用"""
     targets, unach, ok = prepare(res, inst, ACC)
     meas = [k for k, m in inst.items() if m["f"] is not None]
-    cost = {k: inst[k]["ini"] + 10 * inst[k]["ann"] for k in meas}
+    cost = {k: inst[k]["ini"] + 10 * inst[k]["ann"] for k in inst}
     # 重要度の重み（第3目的）：重大度4以上の結果事象・経路への適用数
     w = {k: sum(1 for r in res.values() if r["S"] >= 4 for p in r["paths"] for kk, c, _ in p["app"] if kk == k and c) for k in meas}
+    w = defaultdict(int, w)
     wmax = max(w.values()) or 1
     # 集約ユニット：結果事象×適用対策集合
     units = []
@@ -42,7 +46,7 @@ def solve(res, inst, ACC, mode, log=print, fixed=frozenset()):
             K = tuple(sorted({k for k, c, _ in p["app"] if c}))
             agg[K] += p["H"]
         units.append((r, list(agg.items())))
-    used = sorted({k for _, us in units for K, _ in us for k in K})
+    used = sorted({k for _, us in units for K, _ in us for k in K} | {k for r, _ in units for k in r.get("Mit", [])})
 
     import numpy as np
     import highspy
@@ -87,7 +91,12 @@ def solve(res, inst, ACC, mode, log=print, fixed=frozenset()):
                         ys.append(y)
                         ridx.append(y); rval.append(H * M.path_factor(S, inst) / r["A"])
                 row(1, 1, ys, [1] * len(ys))
-            row(-INF, 1.0 - const / r["A"] + 1e-9, ridx, rval)
+            if r.get("Mit"):
+                z = col(0, 1)
+                row(-INF, 1.0 - const / r["A"] + 1e-9, ridx + [z], rval + [-(r["A2"] / r["A"] - 1.0)])
+                row(-INF, 0, [z] + [x[k] for k in r["Mit"]], [1] + [-1] * len(r["Mit"]))
+            else:
+                row(-INF, 1.0 - const / r["A"] + 1e-9, ridx, rval)
         free = [k for k in used if k not in fixed]
         xi = [x[k] for k in free]
         cvec = {x[k]: 0.0 for k in used}
@@ -131,7 +140,7 @@ def greedy(res, inst, ACC, mode):
     """比較用：貪欲法（採用判断には使わない）"""
     targets, _, _ = prepare(res, inst, ACC)
     meas = [k for k, m in inst.items() if m["f"] is not None]
-    cost = {k: inst[k]["ini"] + 10 * inst[k]["ann"] for k in meas}
+    cost = {k: inst[k]["ini"] + 10 * inst[k]["ann"] for k in inst}
     sel = set()
 
     def freq(r):

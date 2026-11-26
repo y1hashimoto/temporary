@@ -17,6 +17,7 @@ log = lambda s: (LOG.append(s), print(s))
 
 RES_ALL = M.load_stage2(STAGE2)
 inst = M.build_catalog(RES_ALL)
+M.attach_mitigation(RES_ALL, inst)
 # 安全／操業損失の分離：人身・環境の影響がなく、漏洩・火災・爆発・死傷・汚染を含まない結果事象を「操業損失」とする
 LOCRE = re.compile(r"漏洩|漏入|放出|火災|爆発|破裂|火球|BLEVE|蒸気雲|流出|噴出|溢流|溢出|着火|火炎|焼損|死亡|重傷|傷害|凍傷|熱傷|汚染|酸素欠乏")
 for r in RES_ALL.values():
@@ -171,6 +172,9 @@ for i, s_ in enumerate(range(1, 6), 2):
     put(ws8, i, 10, s_, "0"); put(ws8, i, 11, ACC[s_], FREQ, YEL); put(ws8, i, 12, M.ACC_ORG[s_], FREQ)
 put(ws8, 7, 10, "根拠"); put(ws8, 7, 11, "第3段プロンプトの暫定基準（演習依頼者の指示により採用）")
 put(ws8, 7, 12, "重大度マトリクスの『受容可能な事故発生頻度』（100倍厳しい。参考比較のみ）")
+for j, (t, w) in enumerate([("重大度低減の対象：結果事象ID", 12), ("重大度低減対策の番号", 10), ("低減する側面", 10)], 14):
+    c = ws8.cell(row=1, column=j, value=t); c.font = HFONT; c.fill = HF; c.alignment = CEN; c.border = BD
+    ws8.column_dimensions[CL(j)].width = w
 ACCR = f"{Q(S08)}!$K$2:$K$6"
 r8 = 2
 seen = set()
@@ -184,6 +188,13 @@ for r in RES_ALL.values():
                 c = ws8.cell(row=r8, column=j, value=v); c.font = F9
             r8 += 1
 LAST8 = r8 - 1
+rm = 2
+for r in RES_ALL.values():
+    for k in r.get("Mit", []):
+        for j, v in enumerate([r["id"], NO[k], {"S": "人身・安全", "E": "環境", "B": "ビジネス"}[M.MIT_RULES[k[0]][0]]], 14):
+            ws8.cell(row=rm, column=j, value=v).font = F9
+        rm += 1
+LASTM = max(rm - 1, 2)
 ws8.freeze_panes = "A2"
 ws8.auto_filter.ref = f"A1:I{LAST8}"
 APP_B, APP_C, APP_F, APP_G, APP_I = (f"{Q(S08)}!${c}$2:${c}${LAST8}" for c in "BCFGI")
@@ -199,7 +210,8 @@ IND = {}
 for k in ORDER:
     m = inst[k]
     if not m["f"]:
-        IND[k] = "頻度低減に計上しない（事故進展抑制・被害軽減）"
+        IND[k] = ("頻度低減には計上せず、対象結果事象の重大度を1段階低減する（" + M.MIT_RULES[k[0]][3] + "）。複数の重大度低減対策の重ね掛けはせず、1段階までとした。"
+                  if k[0] in M.MIT_RULES else "頻度・重大度のいずれにも計上しない（第2段で放圧装置の要求時失敗を仮定済みのため二重計上となる）")
     elif m["cls"].startswith("SIS-Z"):
         IND[k] = (f"専用センサー・専用遮断弁・BPCSと独立したSIS論理を前提に、BPCSの計器・制御弁とは独立と評価。同一ゾーンのSIFは論理演算器・遮断弁の共用可能性があるため同一クラス（{m['cls']}）として積をとらない。"
                   "計装空気・電源喪失を原因とする経路では遮断弁・電源の共通依存の可能性があるため要確認として計算から除外。")
@@ -227,7 +239,7 @@ for i, k in enumerate(ORDER, 2):
     if m["f"]:
         put(ws2, i, 11, m["f"], FRAC, font=F9B)
     else:
-        put(ws2, i, 11, "計上しない")
+        put(ws2, i, 11, "頻度は計上しない（重大度1段階低減）" if k[0] in M.MIT_RULES else "計上しない")
     put(ws2, i, 12, m["cls"]); put(ws2, i, 13, IND[k]); put(ws2, i, 14, m["why"])
     put(ws2, i, 15, m["ini"], MONEY); put(ws2, i, 16, m["ann"], MONEYY)
     put(ws2, i, 17, f"=10*P{i}", MONEY); put(ws2, i, 18, f"=O{i}+10*P{i}", MONEY, font=F9B)
@@ -242,7 +254,7 @@ for i, k in enumerate(ORDER, 2):
     if m["f"] and not m["paths"]:
         need.append("頻度計算上で有効な経路なし（要確認経路のみ）")
     if not m["f"]:
-        need.append("頻度計算に含めない。重大度低減・事故進展抑制の候補として別途評価")
+        need.append("重大度1段階低減の根拠（検知・隔離時間、耐火時間、建屋耐爆性能、貯留容量）を要確認" if k[0] in M.MIT_RULES else "頻度・重大度に計上しない（二重計上防止）")
     put(ws2, i, 22, "／".join(need) or None, fill=RED if need and m["f"] else None, font=REDF if need and m["f"] else F9)
     put(ws2, i, 23, None)
     put(ws2, i, 24, f"{k[0]}@Z{k[1]}")
@@ -251,10 +263,13 @@ for i, k in enumerate(ORDER, 2):
         fill=OPF if k in opB else None)
 LAST2 = 1 + len(ORDER)
 ws2.freeze_panes = "C2"
-for j, (t, w) in enumerate([("操業損失で有効な経路数", 9), ("操業損失の追加対策（案B基準、09・10シート）", 16)], 25):
+for i, k in enumerate(ORDER, 2):
+    put(ws2, i, 27, f"=COUNTIF({Q(S08)}!$O$2:$O${LASTM},A{i})" if k[0] in M.MIT_RULES else None, "0")
+    put(ws2, i, 28, M.MIT_RULES[k[0]][3] if k[0] in M.MIT_RULES else None)
+for j, (t, w) in enumerate([("操業損失で有効な経路数", 9), ("操業損失の追加対策（案B基準、09・10シート）", 16), ("重大度低減の対象結果事象数", 9), ("重大度低減の内容", 40)], 25):
     c = ws2.cell(row=1, column=j, value=t); c.font = HFONT; c.fill = PatternFill("solid", fgColor="7F6000"); c.alignment = CEN; c.border = BD
     ws2.column_dimensions[CL(j)].width = w
-ws2.auto_filter.ref = f"A1:Z{LAST2}"
+ws2.auto_filter.ref = f"A1:AB{LAST2}"
 CAT_A, CAT_K, CAT_J = (f"{Q(S02)}!${c}$2:${c}${LAST2}" for c in "AKJ")
 
 # =================== 03 / 04 ===================
@@ -270,13 +285,14 @@ def path_sheet(title, sel, plan, resset=None, extra=frozenset()):
     for n in range(1, NSLOT + 1):
         heads += [f"対策{n}", f"対策{n}の適用ゾーン", f"対策{n}の残余頻度倍率"]
     heads += ["原因ゾーンから結果ゾーンへの物理的伝播経路", "対策が遮断する位置", "独立性・共通原因故障の扱い", "計算上の仮定", "レビューコメント", "要確認区分",
-              "結果事象ID", "経路ID", "塊の先頭（1）"] + [f"計上対策番号{n}" for n in range(1, NSLOT + 1)] + ["共通対策の適用（1）", "塊内で共通対策あり（1）"]
-    widths = [8, 40, 12, 6, 12, 11, 12, 12, 12, 12, 8, 16] + [26, 10, 8] * NSLOT + [40, 36, 44, 30, 14, 22, 9, 9, 6] + [6] * NSLOT + [7, 7]
+              "結果事象ID", "経路ID", "塊の先頭（1）"] + [f"計上対策番号{n}" for n in range(1, NSLOT + 1)] + ["共通対策の適用（1）", "塊内で共通対策あり（1）", "重大度低減対策（採用、事故進展抑制・被害軽減）", "低減後の重大度（受容頻度の判定に使用）"]
+    widths = [8, 40, 12, 6, 12, 11, 12, 12, 12, 12, 8, 16] + [26, 10, 8] * NSLOT + [40, 36, 44, 30, 14, 22, 9, 9, 6] + [6] * NSLOT + [7, 7, 34, 9]
     header(ws, heads, widths, 60)
     fcols = [CL(13 + 3 * n + 2) for n in range(NSLOT)]   # O,R,U,X,AA,AD
     c_pr, c_ass, c_rid, c_pid, c_head = 31, 34, 37, 38, 39
     c_n0 = 40
     c_com, c_bcom = c_n0 + NSLOT, c_n0 + NSLOT + 1
+    c_mit, c_sev2 = c_bcom + 1, c_bcom + 2
     r = 2
     blocks = []
     for res_ in resset.values():
@@ -286,12 +302,16 @@ def path_sheet(title, sel, plan, resset=None, extra=frozenset()):
         for idx, p in enumerate(plist):
             put(ws, r, 1, res_["no"], "0", font=F9B); put(ws, r, 2, res_["text"]); put(ws, r, 3, res_["zone"])
             put(ws, r, 4, res_["S"], "0"); put(ws, r, 5, res_["kinds"])
-            put(ws, r, 6, f"=INDEX({ACCR},D{r})", FREQ)
+            mits = [k for k in res_.get("Mit", []) if k in sel or k in extra]
+            put(ws, r, c_mit, "、".join(mname(k) for k in sorted(mits, key=lambda k: NO[k])) or None,
+                fill=(OPF if all(k in extra and k not in sel for k in mits) else ST_FILL[status(mits[0])]) if mits else None)
+            put(ws, r, c_sev2, f'=IF({CL(c_mit)}{r}="",D{r},MAX(1,D{r}-1))', "0", font=F9B if mits else F9)
+            put(ws, r, 6, f"=INDEX({ACCR},{CL(c_sev2)}{r})", FREQ)
             put(ws, r, 7, f"=SUM($H${s0}:$H${e0})", FREQ)
             put(ws, r, 10, f"=SUM($I${s0}:$I${e0})", FREQ, font=F9B)
             put(ws, r, 11, f'=IF(J{r}<=F{r}*(1+1E-9),"受容","未達")', font=F9B, al=CEN)
             st0 = res_.get("status0", "")
-            put(ws, r, 12, {"追加検討が必要": "追加検討が必要（全候補を採用しても未達）", "原因未確定": "原因未確定（第2段から継承）"}.get(st0, "全候補で受容可能" if st0 == "対策で受容可能" else "対策前に受容"),
+            put(ws, r, 12, {"追加検討が必要": "追加検討が必要（全候補を採用しても未達）", "原因未確定": "原因未確定（第2段から継承）", "重大度低減との組合せで受容可能": "重大度低減との組合せで受容可能"}.get(st0, "全候補で受容可能" if st0 == "対策で受容可能" else "対策前に受容"),
                 fill=RED if st0 in ("追加検討が必要", "原因未確定") else None)
             put(ws, r, c_rid, res_["id"]); put(ws, r, c_head, 1 if idx == 0 else 0, "0")
             if p is None:
@@ -373,25 +393,25 @@ def path_sheet(title, sel, plan, resset=None, extra=frozenset()):
         put(ws, s0, c_bcom, f"=MAX({CL(c_com)}{s0}:{CL(c_com)}{e0})", "0")
         for rr in range(s0 + 1, e0 + 1):
             put(ws, rr, c_bcom, None)
-        for j in range(1, c_bcom + 1):
+        for j in range(1, c_sev2 + 1):
             c = ws.cell(row=e0, column=j)
             c.border = Border(left=thin, right=thin, top=thin, bottom=Side(style="medium", color="1F3864"))
     last = r - 1
     ws.freeze_panes = "C2"
-    ws.auto_filter.ref = f"A1:{CL(c_bcom)}{last}"
+    ws.auto_filter.ref = f"A1:{CL(c_sev2)}{last}"
     ws.conditional_formatting.add(f"K2:K{last}", CellIsRule(operator="equal", formula=['"未達"'], fill=RED, font=REDF))
     ws.conditional_formatting.add(f"J2:J{last}", FormulaRule(formula=["$K2=\"未達\""], fill=RED))
-    return ws, last, c_head, c_com, c_bcom
+    return ws, last, c_head, c_com, c_bcom, c_mit
 
 
-ws3, LAST3, CH, CC, CB = path_sheet(S03, selA, "A")
-ws4, LAST4, _, _, _ = path_sheet(S04, selB, "B")
+ws3, LAST3, CH, CC, CB, CM = path_sheet(S03, selA, "A")
+ws4, LAST4, _, _, _, _ = path_sheet(S04, selB, "B")
 log(f"slots {sorted(CNT_SLOTS.items())}")
 
 # =================== 05 比較 ===================
 ws5 = wb.create_sheet(S05)
 header(ws5, ["比較項目", "案A：全体対策数最少案", "案B：全体コスト最少案", "差（B−A）", "備考"], [40, 46, 46, 14, 60])
-HEADC, KC, LC, COMC, BCOMC = CL(CH), "K", "L", CL(CC), CL(CB)
+HEADC, KC, LC, COMC, BCOMC, CMC = CL(CH), "K", "L", CL(CC), CL(CB), CL(CM)
 rows5 = [
     ("採用対策数", f'=COUNTIF({Q(S02)}!$S$2:$S${LAST2},"採用")', f'=COUNTIF({Q(S02)}!$T$2:$T${LAST2},"採用")', "0", "02シートの採用状態から集計"),
     ("初期投資合計", f'=SUMIF({Q(S02)}!$S$2:$S${LAST2},"採用",{Q(S02)}!$O$2:$O${LAST2})', f'=SUMIF({Q(S02)}!$T$2:$T${LAST2},"採用",{Q(S02)}!$O$2:$O${LAST2})', MONEY, ""),
@@ -404,6 +424,10 @@ rows5 = [
      f'=COUNTIFS({Q(S04)}!${HEADC}$2:${HEADC}${LAST4},1,{Q(S04)}!$K$2:$K${LAST4},"未達")', "0", "下行の『全候補でも未達』を含む"),
     ("　うち全候補を採用しても未達（追加検討が必要）", f'=COUNTIFS({Q(S03)}!${HEADC}$2:${HEADC}${LAST3},1,{Q(S03)}!$L$2:$L${LAST3},"追加検討*")',
      f'=COUNTIFS({Q(S04)}!${HEADC}$2:${HEADC}${LAST4},1,{Q(S04)}!$L$2:$L${LAST4},"追加検討*")', "0", "07シートに一覧"),
+    ("重大度低減対策（事故進展抑制・被害軽減）の採用数", f'=COUNTIFS({Q(S02)}!$S$2:$S${LAST2},"採用",{Q(S02)}!$K$2:$K${LAST2},"頻度は計上しない*")',
+     f'=COUNTIFS({Q(S02)}!$T$2:$T${LAST2},"採用",{Q(S02)}!$K$2:$K${LAST2},"頻度は計上しない*")', "0", "採用対策数の内数"),
+    ("重大度低減が適用され受容となった結果事象数（低減なしでも受容のものを含む）", f'=COUNTIFS({Q(S03)}!${HEADC}$2:${HEADC}${LAST3},1,{Q(S03)}!${CMC}$2:${CMC}${LAST3},"<>",{Q(S03)}!$K$2:$K${LAST3},"受容")',
+     f'=COUNTIFS({Q(S04)}!${HEADC}$2:${HEADC}${LAST4},1,{Q(S04)}!${CMC}$2:${CMC}${LAST4},"<>",{Q(S04)}!$K$2:$K${LAST4},"受容")', "0", "低減後の重大度で受容頻度を判定"),
     ("共通対策によって防御される結果事象数", f'=COUNTIFS({Q(S03)}!${HEADC}$2:${HEADC}${LAST3},1,{Q(S03)}!${BCOMC}$2:${BCOMC}${LAST3},1)',
      f'=COUNTIFS({Q(S04)}!${HEADC}$2:${HEADC}${LAST4},1,{Q(S04)}!${BCOMC}$2:${BCOMC}${LAST4},1)', "0", "共通対策＝有効な結果事象数が2以上の採用対策"),
     ("共通対策によって防御される経路数", f'=COUNTIF({Q(S03)}!${COMC}$2:${COMC}${LAST3},1)', f'=COUNTIF({Q(S04)}!${COMC}$2:${COMC}${LAST4},1)', "0", ""),
@@ -443,10 +467,12 @@ method = [
     ("求解状況（案A）", f"第1段 {infoA['status'][0]}（対策数 {infoA['count']}）→ 第2段 {infoA['status'][1]}、探索ノード {infoA['nodes']}、{infoA['secs']:.1f}秒"),
     ("求解状況（案B）", f"第1段 {infoB['status'][0]}（10年コスト {infoB['cost']:.1f}百万円）→ 第2段 {infoB['status'][1]}、探索ノード {infoB['nodes']}、{infoB['secs']:.1f}秒"),
     ("同点時の優先順位", "案A：対策数→10年コスト→重大度4以上の経路への適用数（多い方を優先）。案B：10年コスト→対策数→重大度4以上の経路への適用数。"),
-    ("比較：貪欲法の結果", f"対策数優先の貪欲法 {gA['count']}件・{gA['cost']:.1f}百万円／コスト効率優先の貪欲法 {gB['count']}件・{gB['cost']:.1f}百万円（いずれも最適化解以上）"),
+    ("比較：貪欲法の結果", f"対策数優先の貪欲法 {gA['count']}件・{gA['cost']:.1f}百万円／コスト効率優先の貪欲法 {gB['count']}件・{gB['cost']:.1f}百万円（参考：貪欲法は頻度低減のみで、重大度低減との組合せで受容となる結果事象を含まない小さい問題を解いている）"),
     ("受容頻度の基準", "第3段プロンプトの暫定基準（S1:1E+0〜S5:1E-4 /年）を採用（演習依頼者の指示）。重大度マトリクスの『受容可能な事故発生頻度』（S1:1E-2〜S5:1E-6 /年、100倍厳しい）は参考比較のみ。"),
     ("参考：組織基準で選定した場合", f"案A {infoPA['count']}件・{infoPA['cost']:.1f}百万円、案B {infoPB['count']}件・{infoPB['cost']:.1f}百万円。全候補でも未達となる結果事象 {infoPA['nunach']}件（暫定基準では {infoA['nunach']}件）。"),
     ("対象範囲", f"安全の結果事象（人身・環境の影響、または漏洩・火災・爆発・死傷・汚染を含むもの）{len(res)}件を対象に選定。操業損失（品質・触媒・機器損傷・停止）{len(RO)}件は分離し、09・10シートで追加対策を別に評価した。"),
+    ("重大度低減の扱い", "事故進展抑制・被害軽減（ガス検知・ESD隔離、耐火被覆・散水、計器室耐爆化、防液堤・排水遮断、消火排水貯留、緊急時対応）は頻度を下げず、対象結果事象の重大度を1段階下げる（受容頻度は10倍に緩和）。"
+     "対象は採用重大度を単独で決めている側面に作用する場合のみ、重ね掛けなし。放圧装置の容量検証は第2段の仮定との二重計上となるため計上しない。最適化では重大度低減の採否も同時に選定した。"),
     ("従属対策の扱い", "同一独立性クラスの対策が同一経路に重なる場合は倍率の積をとらず単一効果のみ計上（追加採用で計算上のリスクが増える逆転を避けるため、採用済みのうち1件の効果）。"),
     ("免責", "本成果は演習用の概略評価である。実設備への導入判断には、設計仕様、独立保護層の要件（SIL検証）、共通原因故障、保全性、詳細コスト、変更管理の追加確認が必要。"),
 ]
@@ -521,6 +547,10 @@ for r in un:
 for r in res.values():
     if r.get("status0") == "原因未確定":
         row7("受容頻度を達成できない結果事象（原因未確定）", r["id"], r["text"], None, None, r["S"], "第2段で原因未確定。原因事象の追加（第1段への差戻し）が必要。頻度を算定できないため受容判定不能。", r["zone"], True)
+for k in ORDER:
+    if k[0] in M.MIT_RULES and (k in selA or k in selB):
+        row7("効果倍率の根拠が弱い対策", f"【{NO[k]}】", inst[k]["name"] + f"（{M.ZSH[k[1]]}、重大度1段階低減）",
+             need="重大度1段階低減は演習仮定。検知・隔離の応答時間、耐火時間、建屋の耐爆性能、貯留容量などの設計根拠で確認する。", rel=status(k), red=True)
 for k in freqm:
     m = inst[k]
     if m["f"] <= 1 / 30 or m["kind"] == "伝播遮断":
@@ -583,7 +613,7 @@ ws7.auto_filter.ref = f"A1:I{LAST7}"
 
 # =================== 09 操業損失：経路別対策 ===================
 S09, S10 = "09_操業損失_経路別対策", "10_操業損失_集計"
-ws9, LAST9, _, _, _ = path_sheet(S09, selB, "B", RO, frozenset(opB))
+ws9, LAST9, _, _, _, _ = path_sheet(S09, selB, "B", RO, frozenset(opB))
 
 # =================== 10 操業損失：集計 ===================
 ws10 = wb.create_sheet(S10)
